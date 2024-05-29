@@ -3,11 +3,22 @@ const app = express();
 require('dotenv').config();
 const cors = require('cors');
 const port = process.env.PORT || 5000;
+const jwt = require('jsonwebtoken');
 
 // middlewars
 
 app.use(cors());
 app.use(express.json());
+
+const verifyToken = async (req, res, next) => {
+    console.log('inside verify token', req.headers);
+    if (!req.headers.authorization) {
+        return res.status(401).send({ message: 'forbidden access' })
+    }
+    const token = await req.headers.authorization.split(' ')[1];
+    
+    next();
+}
 
 
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
@@ -31,8 +42,20 @@ async function run() {
         const cartCollection = client.db('bistroDB').collection('carts');
         const userCollection = client.db('bistroDB').collection('users');
 
+        // token related api
+
+        app.post('/jwt', async (req, res) => {
+            const user = req.body;
+            const token = await jwt.sign(user, process.env.ACCESS_TOKEN, {
+                expiresIn: '1h'
+            })
+            res.send({ token })
+        })
+
+
         // user related api
-        app.get('/users', async (req, res) => {
+        app.get('/users', verifyToken, async (req, res) => {
+            console.log(req.headers);
             const result = await userCollection.find().toArray();
             res.send(result);
         })
@@ -51,6 +74,19 @@ async function run() {
             const query = { _id: new ObjectId(id) };
             const result = await userCollection.deleteOne(query);
             res.send(result);
+        })
+
+        app.patch('/users/admin/:id', async (req, res) => {
+            const id = req.params.id;
+            const filter = { _id: new ObjectId(id) };
+            const updatedDoc = {
+                $set: {
+                    role: "admin"
+                }
+            }
+            const result = await userCollection.updateOne(filter, updatedDoc);
+            res.send(result);
+
         })
         // menu related api
         app.get('/menu', async (req, res) => {
